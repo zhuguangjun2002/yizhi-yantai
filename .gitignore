@@ -1,0 +1,7 @@
+# 中间产物与旧版本原图不进仓库，只留母版
+concept/*
+!concept/dashscope-final/
+
+# 系统垃圾
+.DS_Store
+Thumbs.db

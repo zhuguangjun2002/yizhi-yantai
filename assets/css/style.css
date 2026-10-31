@@ -1,0 +1,466 @@
+/* ==========================================================================
+   《一颗苹果的一百五十年》— 视觉与版式
+   设计原则：纸是底的，红是墨，留白是呼吸。
+   场景现在是 AI 生成的关键帧，边框回纹是图里自带的，别裁。
+   ========================================================================== */
+
+:root {
+  --paper:      #f3ede1;   /* 页面底色 */
+  --paper-deep: #e7ddc9;
+  --paper-edge: #d8cbb2;
+  --sheet:      #faf5e9;   /* 作品纸面 */
+  --ink:        #2a2521;
+  --ink-soft:   #6f655a;
+  --ink-faint:  #9c9184;
+  --red:        #a83a2e;
+  --red-deep:   #7d2820;
+
+  --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
+  --kai:   "Kaiti SC", "STKaiti", "KaiTi", "Noto Serif SC", serif;
+
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --scene-ratio: 3 / 2;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.95;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* 宣纸纤维：一层极淡的噪点，让屏幕不像屏幕 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .45;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.2'/%3E%3C/svg%3E");
+}
+
+/* --------------------------------------------------------------------------
+   进度条 / 章节导航
+   -------------------------------------------------------------------------- */
+
+.progress {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  z-index: 60;
+}
+.progress i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--red);
+  transition: width .1s linear;
+}
+
+.rail {
+  position: fixed;
+  top: 50%;
+  left: 26px;
+  transform: translateY(-50%);
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  opacity: 0;
+  transition: opacity .6s var(--ease);
+}
+body.stage-on .rail { opacity: 1; }
+
+.rail a { display: block; padding: 6px 0; text-decoration: none; }
+.rail a span {
+  display: block;
+  width: 18px;
+  height: 1px;
+  background: var(--ink-faint);
+  transition: width .35s var(--ease), background .3s var(--ease);
+}
+.rail a:hover span { width: 28px; }
+.rail a.is-active span { width: 34px; background: var(--red); }
+
+/* --------------------------------------------------------------------------
+   舞台：一张张剪纸作品
+   -------------------------------------------------------------------------- */
+
+.stage {
+  position: fixed;
+  top: 0; right: 0;
+  width: 54vw;
+  height: 100vh;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .7s var(--ease);
+}
+body.stage-on .stage { opacity: 1; }
+
+.paper-frame {
+  position: relative;
+  width: min(86%, 620px);
+  aspect-ratio: var(--scene-ratio);
+  background: var(--sheet);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .8) inset,
+    0 30px 60px -28px rgba(90, 68, 40, .5),
+    0 4px 14px -6px rgba(90, 68, 40, .18);
+  transform-origin: 50% 50%;
+  transition: transform .2s linear, box-shadow .6s var(--ease);
+}
+
+/* 第五章的反转：整块画面收缩成一张纸 */
+body.is-reveal .paper-frame {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .9) inset,
+    0 40px 80px -30px rgba(60, 44, 26, .62),
+    0 6px 18px -8px rgba(60, 44, 26, .28);
+}
+
+.stage-inner {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(.985);
+  transition: opacity .9s var(--ease), transform .9s var(--ease), visibility .9s;
+}
+.scene.is-active {
+  opacity: 1;
+  visibility: visible;
+  transform: scale(1);
+}
+
+/* contain 而不是 cover：回纹边框一个像素都不能裁 */
+.scene img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* --------------------------------------------------------------------------
+   首屏
+   -------------------------------------------------------------------------- */
+
+.hero {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+  display: grid;
+  align-items: center;
+  padding: 8vh 6vw;
+}
+
+.hero-inner { max-width: 40rem; }
+
+.eyebrow {
+  margin: 0 0 2rem;
+  font-size: 12px;
+  letter-spacing: .42em;
+  color: var(--ink-faint);
+}
+
+.hero h1 {
+  margin: 0;
+  font-family: var(--kai);
+  font-weight: 400;
+  font-size: clamp(2.9rem, 5.6vw, 4.8rem);
+  line-height: 1.26;
+  letter-spacing: .04em;
+}
+
+.hero-sub {
+  margin: 2.2rem 0 0;
+  font-size: clamp(.95rem, 1.4vw, 1.05rem);
+  color: var(--ink-soft);
+  letter-spacing: .1em;
+}
+
+.hero-quote {
+  margin: 3.6rem 0 0;
+  padding-left: 1.4rem;
+  border-left: 2px solid var(--red);
+  font-family: var(--kai);
+  font-size: clamp(1.05rem, 1.8vw, 1.25rem);
+  line-height: 1.9;
+  color: var(--red-deep);
+}
+
+.scroll-hint {
+  margin-top: 4.4rem;
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+  font-size: 12px;
+  letter-spacing: .3em;
+  color: var(--ink-faint);
+}
+.scroll-hint span {
+  display: block;
+  width: 1px;
+  height: 46px;
+  background: linear-gradient(to bottom, var(--ink-faint), transparent);
+  animation: drip 2.4s var(--ease) infinite;
+}
+@keyframes drip {
+  0%   { transform: scaleY(.2); transform-origin: top; opacity: 0; }
+  40%  { transform: scaleY(1);  transform-origin: top; opacity: 1; }
+  100% { transform: scaleY(1);  transform-origin: top; opacity: 0; }
+}
+
+/* --------------------------------------------------------------------------
+   正文：左侧文字，右侧剪纸
+   -------------------------------------------------------------------------- */
+
+.scrolly {
+  position: relative;
+  z-index: 2;
+  padding-bottom: 10vh;
+}
+
+.copy {
+  width: min(42vw, 32rem);
+  margin-left: max(9vw, 7rem);
+}
+
+/* 段落浮起：读起来像纸页一张张翻过去 */
+html.js .ch > * {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity .9s var(--ease), transform .9s var(--ease);
+}
+html.js .ch > *.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.ch {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 14vh 0;
+}
+
+.ch-kicker {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: .44em;
+  color: var(--ink-faint);
+}
+
+.ch h2 {
+  margin: .6rem 0 0;
+  font-family: var(--kai);
+  font-weight: 400;
+  font-size: clamp(2.2rem, 4vw, 3.2rem);
+  letter-spacing: .12em;
+  color: var(--red-deep);
+}
+
+.ch-year {
+  margin: .4rem 0 2.4rem;
+  font-size: 12px;
+  letter-spacing: .24em;
+  color: var(--ink-faint);
+}
+
+.ch p { margin: 0 0 1.3rem; color: #3a332c; }
+
+.ch .lead {
+  font-family: var(--kai);
+  font-size: clamp(1.22rem, 2.1vw, 1.5rem);
+  line-height: 1.85;
+  color: var(--ink);
+}
+
+.ch .punch {
+  margin-top: 2.8rem;
+  padding-top: 1.8rem;
+  border-top: 1px solid var(--paper-edge);
+  font-family: var(--kai);
+  font-size: clamp(1.3rem, 2.3vw, 1.65rem);
+  letter-spacing: .1em;
+  color: var(--red);
+}
+
+.facts {
+  list-style: none;
+  margin: 2.6rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--paper-edge);
+}
+.facts li {
+  padding: .9rem 0;
+  border-bottom: 1px solid var(--paper-edge);
+  font-size: .86rem;
+  line-height: 1.8;
+  color: var(--ink-soft);
+}
+.facts b {
+  display: inline-block;
+  min-width: 5.4em;
+  margin-right: 1.1em;
+  font-weight: 400;
+  font-size: .76rem;
+  letter-spacing: .14em;
+  color: var(--red);
+}
+
+/* --------------------------------------------------------------------------
+   页脚
+   -------------------------------------------------------------------------- */
+
+.site-footer {
+  position: relative;
+  z-index: 2;
+  margin-top: 6vh;
+  padding: 9vh 6vw 6vh;
+  background: var(--paper-deep);
+  border-top: 1px solid var(--paper-edge);
+}
+
+.footer-inner { max-width: 62rem; }
+
+.site-footer h3 {
+  margin: 0 0 1.4rem;
+  font-family: var(--kai);
+  font-weight: 400;
+  font-size: 1.6rem;
+  letter-spacing: .18em;
+  color: var(--red-deep);
+}
+
+.site-footer p { color: var(--ink-soft); font-size: .92rem; }
+
+.footer-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3rem;
+  margin: 3.2rem 0;
+}
+.footer-cols h4 {
+  margin: 0 0 .9rem;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: .26em;
+  color: var(--ink-faint);
+}
+.footer-cols ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: .84rem;
+  line-height: 2;
+  color: var(--ink-soft);
+}
+
+.qr-slot {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  margin-top: 2.6rem;
+}
+.qr-box {
+  width: 84px;
+  height: 84px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--ink-faint);
+  font-size: 11px;
+  letter-spacing: .1em;
+  color: var(--ink-faint);
+}
+.qr-slot p { margin: 0; font-size: .82rem; color: var(--ink-faint); }
+
+.copyright {
+  margin-top: 3.4rem !important;
+  padding-top: 1.6rem;
+  border-top: 1px solid var(--paper-edge);
+  font-size: .76rem !important;
+  letter-spacing: .16em;
+  color: var(--ink-faint) !important;
+}
+
+/* --------------------------------------------------------------------------
+   移动端的内联场景位：桌面端永远空着
+   -------------------------------------------------------------------------- */
+
+.ch-scene { display: none; }
+
+/* --------------------------------------------------------------------------
+   窄屏：剪纸跟着每一章走
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  body { font-size: 16px; }
+
+  /* 钉不住的画就别钉了，改成每章一张 */
+  .stage { display: none; }
+  .rail { display: none; }
+
+  .ch-scene {
+    display: block;
+    margin: 0 0 2.2rem;
+  }
+  .ch-scene .scene {
+    position: static;
+    inset: auto;
+    width: 100%;
+    aspect-ratio: var(--scene-ratio);
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    background: var(--sheet);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, .8) inset,
+      0 22px 44px -26px rgba(90, 68, 40, .5),
+      0 4px 12px -6px rgba(90, 68, 40, .18);
+  }
+
+  .copy {
+    width: min(100%, 34rem);
+    margin: 0 auto;
+    padding: 0 7vw;
+  }
+
+  .ch {
+    min-height: auto;
+    padding: 5vh 0 9vh;
+  }
+
+  .hero { padding-top: 10vh; padding-bottom: 6vh; }
+  .scroll-hint { margin-top: 3rem; }
+
+  .footer-cols { grid-template-columns: 1fr; gap: 2rem; }
+}
+
+/* --------------------------------------------------------------------------
+   无障碍：尊重「减少动态效果」
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .scroll-hint span { animation: none; }
+  .scene, .stage, .paper-frame, .rail a span { transition: none; }
+}
