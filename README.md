@@ -33,6 +33,74 @@ python3 -m http.server 8000
 
 部署时把整个目录上传到任意静态空间即可，不需要 Node、不需要打包。
 
+但别把 `concept/` 一起传上去——131 MB 的分镜母版是给评审看的，不是给访客下载的。
+正式发布用下面这条流水线。
+
+---
+
+## 线上地址
+
+| 用途 | 地址 |
+|---|---|
+| 正式站点 | <https://fruit.bigcow.net/> |
+| Pages 预览域 | <https://fruit-3cq.pages.dev/> |
+| 源码 | <https://github.com/zhuguangjun2002/yizhi-yantai> |
+
+托管在 Cloudflare Pages，git 推送即部署，没有服务器要养。
+
+---
+
+## 部署
+
+### 自动（推荐）
+
+推到 `main` 就完事：
+
+```bash
+git push origin main
+```
+
+`.github/workflows/deploy.yml` 会跑 `tools/build-site.sh` 生成 `dist/`，
+再交给 `cloudflare/wrangler-action` 发布。约 20 秒后 <https://fruit.bigcow.net/> 生效。
+
+需要的两个仓库 Secret（Settings → Secrets and variables → Actions）：
+
+| Secret | 从哪来 |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | Cloudflare 控制台 → My Profile → API Tokens，权限至少 `Cloudflare Pages:Edit` + `Zone:DNS:Edit` |
+| `CLOUDFLARE_ACCOUNT_ID` | 控制台右下角 Account ID，或 `npx wrangler whoami` |
+
+也可以命令行灌进去，省得手点：
+
+```bash
+gh secret set CLOUDFLARE_API_TOKEN --body "$CLOUDFLARE_API_TOKEN"
+gh secret set CLOUDFLARE_ACCOUNT_ID --body "<account-id>"
+```
+
+### 手动（网络断了/CI 抽风时）
+
+```bash
+bash tools/build-site.sh
+npx wrangler pages deploy dist --project-name=fruit --branch=main
+```
+
+`wrangler.toml` 里已经写好项目名和产物目录，所以其实 `npx wrangler pages deploy` 就够了，
+上面那条只是把话说清楚。
+
+### 这套配置里几个不太显然的点
+
+- **只发白名单**：`tools/build-site.sh` 明确拷贝 `index.html`、`404.html`、`_headers`、`assets/`。
+  以后新增草稿目录默认不会误上线——黑名单式的"排除 concept"迟早会漏。
+- **不能对图片用 `immutable`**：`assets/img/` 的文件名没有内容指纹，换图是直接覆盖同名文件。
+  真上一年缓存，改了图老访客要等明年才看见。所以 `_headers` 里给的是 1 小时 + `stale-while-revalidate`。
+- **自定义域名的 CNAME 要自己确认**：Pages 项目加域名后，若 DNS 记录没自动生成，
+  手动加一条 `fruit` → `fruit-3cq.pages.dev` 的 CNAME 并开代理（橙云）。
+  证书由 Google Trust Services 签发，通常几分钟内就绪。
+- **`404.html` 不是装饰**：没有它时 Cloudflare 会把未知路径兜回首页并返回 200，
+  搜索引擎会以为全世界都是你的首页。
+
+
+
 ---
 
 ## 目录

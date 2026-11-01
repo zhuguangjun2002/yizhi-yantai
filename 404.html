@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>这一页没剪出来 · 一纸烟台</title>
+<meta name="robots" content="noindex">
+<!-- 这页刻意不引 style.css：样式表里全是滚动叙事的规矩，一个 404 用不上，还多一次请求 -->
+<style>
+  :root { --paper: #f3ede1; --ink: #2a2521; --ink-soft: #6f655a; --red: #a83a2e; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; display: grid; place-items: center; text-align: center;
+    background: var(--paper); color: var(--ink);
+    font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
+    line-height: 1.9;
+  }
+  .sheet { max-width: 30rem; padding: 3rem 1.5rem; }
+  .stamp {
+    width: 5rem; height: 5rem; margin: 0 auto 2rem; display: grid; place-items: center;
+    border: 2px solid var(--red); border-radius: 6px; color: var(--red);
+    font-size: 1.5rem; letter-spacing: .1em; transform: rotate(-4deg);
+  }
+  h1 { margin: 0 0 .75rem; font-size: 1.5rem; font-weight: 600; letter-spacing: .08em; }
+  p { margin: 0 0 2rem; color: var(--ink-soft); font-size: .95rem; }
+  a {
+    display: inline-block; padding: .6rem 1.6rem; color: var(--red);
+    border: 1px solid var(--red); border-radius: 2px; text-decoration: none;
+    font-size: .95rem; letter-spacing: .12em;
+  }
+  a:hover { background: var(--red); color: var(--paper); }
+</style>
+</head>
+<body>
+  <main class="sheet">
+    <div class="stamp" aria-hidden="true">空</div>
+    <h1>这一页没剪出来</h1>
+    <p>地址大概是多剪了一刀。回到首页，从头看那一船水果下船。</p>
+    <a href="/">回到《一纸烟台》</a>
+  </main>
+</body>
+</html>

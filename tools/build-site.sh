@@ -14,6 +14,7 @@ rm -rf "$dist_dir"
 mkdir -p "$dist_dir"
 
 cp "$repo_root/index.html" "$dist_dir/"
+cp "$repo_root/404.html" "$dist_dir/"
 cp "$repo_root/_headers" "$dist_dir/"
 cp -R "$repo_root/assets" "$dist_dir/assets"
 
