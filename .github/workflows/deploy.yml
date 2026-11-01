@@ -1,0 +1,32 @@
+name: Deploy to Cloudflare Pages
+
+# 推 main 即上线。手滑推了个坏的？在 Actions 里重跑上一个绿色 commit 就行，
+# 别去 Cloudflare 控制台手点——那是给自己留两套互相不知道对方存在的部署历史。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pages-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build static bundle
+        run: bash tools/build-site.sh
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=fruit --branch=main

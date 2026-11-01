@@ -1,0 +1,8 @@
+# Cloudflare Pages 直接上传模式的配置。
+#
+# 这里只声明「项目名 + 把哪个目录发上去」；真正的构建由 tools/build-site.sh 完成，
+# 由 CI 或本地 `npx wrangler pages deploy` 调用。别改成 git 集成模式后忘了这一步——
+# Pages 不会自己跑脚本，会老老实实把一个空目录发上去，然后开开心心地返回部署成功。
+name = "fruit"
+compatibility_date = "2026-10-31"
+pages_build_output_dir = "dist"

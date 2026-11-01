@@ -5,3 +5,6 @@ concept/*
 # 系统垃圾
 .DS_Store
 Thumbs.db
+
+# 部署产物（tools/build-site.sh 生成，不进仓库）
+dist/
