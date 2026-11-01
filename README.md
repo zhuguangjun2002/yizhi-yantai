@@ -128,8 +128,14 @@ npx wrangler pages deploy dist --project-name=fruit --branch=main
 把「一纸烟台，剪了一百五十年」推进画面，并在片尾卡淡入前藏掉页脚（那里有二维码占位框）。
 帧序列按时间戳转成 30 fps 恒定帧率，再与片尾卡交叉淡入、混入音轨。
 
-> 抓帧脚本是一次性工具，没有随仓库提交——这是本次交付留下的已知缺口，见「下一步」。
-> 重新做时别改用屏幕录制：字体渲染不同、掉帧，观感差一截。
+> 抓帧脚本在 `tools/video/`，一条命令重出片：
+>
+> ```bash
+> node tools/video/make-video.mjs --orientation portrait --music <音频> --music-start 20
+> ```
+>
+> 依赖、调参、为什么不能用录屏，见 `tools/video/README.md`。
+> 换配乐不用重编画面：脚本会自己截取、淡入淡出、归一到 -20 LUFS。
 
 ---
 
@@ -142,9 +148,11 @@ _headers                Cloudflare 响应头（缓存与安全）
 assets/css/style.css    版式、纸色、转场
 assets/js/main.js       滚动叙事控制
 assets/img/             十一张关键帧（1536×1024 WebP，三档尺寸）
+assets/img/qr-site.svg  页脚二维码（指向线上地址）
 concept/dashscope-final 十一张原图（1536×1024 PNG，母版）
 tools/gen-keyframes.py  重新生成关键帧的脚本
 tools/build-site.sh     发布前打包，只挑该上线的文件
+tools/video/            从页面拍成片的流水线（抓帧 + 编码 + 配乐）
 docs/                   美术设定（风格圣经）
 video/                  成片（本地，不进仓库）；CREDITS.md 授权说明入库
 wrangler.toml           Cloudflare Pages 项目配置
@@ -245,7 +253,7 @@ python3 tools/gen-keyframes.py
 - [ ] 再生成一版别家模型的关键帧，横向比风格
 - [ ] 补 3–5 个实拍空镜（老艺人的手、剪刀、红纸屑、真苹果、海面），与 AI 图交替
 - [x] 剪一版竖屏成片（1080×1920，移动端版式，见「成片」）
-- [ ] 把这套抓帧流程收进 `tools/video/`：目前只有 README 里的思路，脚本还是一次性的
-- [ ] 页脚二维码换成线上地址
+- [x] 抓帧流程收进 `tools/video/`，一条命令重出片
+- [x] 页脚二维码换成线上地址（`assets/img/qr-site.svg`，扫码直达 fruit.bigcow.net）
 - [ ] 加一份「提示词 → 生成图 → 成片」的对照页，评审时最好用
 - [ ] 若甲方要求音乐完全自有，把《月光》换成本地录制的原创或已购授权（换曲只需重混音轨，画面不用重编）

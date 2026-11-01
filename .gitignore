@@ -12,3 +12,6 @@ dist/
 # 成片体积大，不进仓库；授权说明要跟着代码走
 video/*
 !video/CREDITS.md
+
+# 视频流水线中间产物
+build/
