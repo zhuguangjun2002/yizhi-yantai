@@ -98,8 +98,38 @@ npx wrangler pages deploy dist --project-name=fruit --branch=main
   证书由 Google Trust Services 签发，通常几分钟内就绪。
 - **`404.html` 不是装饰**：没有它时 Cloudflare 会把未知路径兜回首页并返回 200，
   搜索引擎会以为全世界都是你的首页。
+- **成片不参与发布**：`tools/build-site.sh` 只拷 `index.html`、`404.html`、`_headers`、`assets/`，
+  `video/` 留在本地。别为了「顺便托管」把它塞进 `dist/`，Pages 的流量不是给你发片的。
 
+---
 
+## 成片
+
+| 文件（`video/` 下） | 画面 | 时长 | 体积 |
+|---|---|---|---|
+| `yizhi-yantai-vertical-1080x1920.mp4` | 1080×1920 | 100.3 s | 30 MB |
+| `yizhi-yantai-vertical-720x1280.mp4` | 720×1280 | 100.3 s | 14 MB |
+| `yizhi-yantai-1080p.mp4` | 1920×1080 | 90.5 s | 13 MB |
+| `yizhi-yantai-720p.mp4` | 1280×720 | 90.5 s | 6.4 MB |
+
+- 编码：H.264 High / 30 fps / CRF 22–23 / `+faststart`，音频 AAC 192k。
+- 配乐：**《月光》（Clair de lune）**，Debussy 作曲（公有领域）；录音由 Laurens Goedhart 演奏，
+  Wikimedia Commons 标注为公有领域。取自原曲 0:20，2.5 秒淡入、4 秒淡出，
+  整体归一 **-20 LUFS**、真峰值 **-2 dBTP**。
+- 署名已压进片尾卡右下角：`《月光》Debussy｜录音 Laurens Goedhart｜Public Domain`。
+- 来源与授权细节见 `video/CREDITS.md`。
+- `*-silent.mp4` 是无声版，留着给二次剪辑或换曲。
+
+竖版不是把横版裁成 9:16——它走的是站点自己的移动端版式（图在上、文在下，回纹边框完整），
+用 540×960 CSS @2x 渲染成 1080×1920。
+
+**怎么做出来的**（别用录屏软件）：Chrome headless 通过 CDP `Page.startScreencast` 逐帧抓图，
+滚动由页面内的缓动脚本驱动，停留时长按章节字数分配；竖版在收尾处额外下摇，
+把「一纸烟台，剪了一百五十年」推进画面，并在片尾卡淡入前藏掉页脚（那里有二维码占位框）。
+帧序列按时间戳转成 30 fps 恒定帧率，再与片尾卡交叉淡入、混入音轨。
+
+> 抓帧脚本是一次性工具，没有随仓库提交——这是本次交付留下的已知缺口，见「下一步」。
+> 重新做时别改用屏幕录制：字体渲染不同、掉帧，观感差一截。
 
 ---
 
@@ -107,12 +137,18 @@ npx wrangler pages deploy dist --project-name=fruit --branch=main
 
 ```
 index.html              页面结构
+404.html                找不到页面时的落款
+_headers                Cloudflare 响应头（缓存与安全）
 assets/css/style.css    版式、纸色、转场
 assets/js/main.js       滚动叙事控制
 assets/img/             十一张关键帧（1536×1024 WebP，三档尺寸）
 concept/dashscope-final 十一张原图（1536×1024 PNG，母版）
 tools/gen-keyframes.py  重新生成关键帧的脚本
+tools/build-site.sh     发布前打包，只挑该上线的文件
 docs/                   美术设定（风格圣经）
+video/                  成片（本地，不进仓库）；CREDITS.md 授权说明入库
+wrangler.toml           Cloudflare Pages 项目配置
+.github/workflows/      推 main 即部署
 ```
 
 ---
@@ -208,6 +244,8 @@ python3 tools/gen-keyframes.py
 
 - [ ] 再生成一版别家模型的关键帧，横向比风格
 - [ ] 补 3–5 个实拍空镜（老艺人的手、剪刀、红纸屑、真苹果、海面），与 AI 图交替
-- [ ] 按同一分镜剪 5 条竖屏短片，本篇作为落地页
+- [x] 剪一版竖屏成片（1080×1920，移动端版式，见「成片」）
+- [ ] 把这套抓帧流程收进 `tools/video/`：目前只有 README 里的思路，脚本还是一次性的
 - [ ] 页脚二维码换成线上地址
 - [ ] 加一份「提示词 → 生成图 → 成片」的对照页，评审时最好用
+- [ ] 若甲方要求音乐完全自有，把《月光》换成本地录制的原创或已购授权（换曲只需重混音轨，画面不用重编）
