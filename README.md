@@ -93,9 +93,11 @@ npx wrangler pages deploy dist --project-name=fruit --branch=main
 - **只发白名单**：`tools/build-site.sh` 明确拷贝 `index.html`、`404.html`、`_headers`、`assets/`。
   以后新增草稿目录默认不会误上线——黑名单式的"排除 concept"迟早会漏。
 - **不能对图片用 `immutable`**：`assets/img/` 的文件名没有内容指纹，换图是直接覆盖同名文件。
-  真上一年缓存，改了图老访客要等明年才看见。所以 `_headers` 里给的是 1 小时 + `stale-while-revalidate`。
+  真上一年缓存，改了图老访客要等明年才看见。`pages.dev` 按 `_headers` 走 1 小时 + `stale-while-revalidate`；
+  `fruit.bigcow.net` 上有一条 zone 缓存规则，实测静态资源是 4 小时。
 - **改 CSS/JS 要 bump 版本号**：`index.html` 里引的是 `style.css?v=20261102`、`main.js?v=20261102`。
-  `_headers` 给静态资源 1 小时缓存，Cloudflare 边缘还可能更久；不换 query 就会出现「HTML 已更新、样式还是旧的」。
+  HTML 是 `must-revalidate`，推完立刻更新；静态资源在自定义域名上要吃 4 小时边缘缓存。
+  不换 query 就会出现「HTML 已更新、样式还是旧的」——这次页脚 details 就这么卡过一次。
 - **自定义域名的 CNAME 要自己确认**：Pages 项目加域名后，若 DNS 记录没自动生成，
   手动加一条 `fruit` → `fruit-3cq.pages.dev` 的 CNAME 并开代理（橙云）。
   证书由 Google Trust Services 签发，通常几分钟内就绪。

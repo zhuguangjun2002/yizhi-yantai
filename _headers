@@ -6,8 +6,9 @@
   X-Frame-Options: SAMEORIGIN
   Permissions-Policy: geolocation=(), microphone=(), camera=()
 
-# 图片/CSS/JS 的文件名都没有内容指纹。改样式或脚本时，记得同步 bump
-# index.html 里的 ?v= 版本号；否则边缘缓存会让老访客继续看旧文件。
+# 图片/CSS/JS 的文件名都没有内容指纹。pages.dev 按这里走 1 小时；
+# fruit.bigcow.net 的 zone 缓存规则会把静态资源拉到 4 小时。
+# 改样式或脚本时，记得同步 bump index.html 里的 ?v= 版本号。
 # 所以这里不能写 immutable——否则换了剪纸，老访客一年都看不到新画。
 /assets/img/*
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
