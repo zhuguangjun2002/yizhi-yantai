@@ -47,7 +47,6 @@ const ORIENTATIONS = {
     transitionMs: 1100,
     driftPx: 26,
     hold: { base: 2200, perChar: 16, min: 4200, max: 6800 },
-    finale: false,
     card: { eyebrow: 15, title: 52, url: 20, credit: 15, padX: 56, padY: 44 },
     crf: 22,
     level: '4.1',
@@ -64,12 +63,17 @@ const ORIENTATIONS = {
     transitionMs: 1300,
     driftPx: 110,
     hold: { base: 2600, perChar: 16, min: 4800, max: 7200 },
-    finale: true,
     card: { eyebrow: 13, title: 44, url: 17, credit: 11, padX: 26, padY: 40 },
     crf: 22,
     level: '4.2',
   },
 };
+
+const NARRATION_MANIFEST = path.join(REPO_ROOT, 'build', 'narration', 'manifest.json');
+/** 解说不早于画面落位，也不贴着换场尾巴开口。 */
+const NARRATION_LEAD_MS = 300;
+/** 一句说完留半拍，别让下一章的画面在最后一个字上抢跑。 */
+const NARRATION_TAIL_MS = 700;
 
 const args = parseArgs(process.argv.slice(2));
 const workDir = path.resolve(args.work || path.join(REPO_ROOT, 'build', 'video'));
@@ -84,6 +88,12 @@ if (!Object.keys(ORIENTATIONS).includes(orientationKeys[0])) {
 
 // 放到所有声明之后执行：类声明有暂时性死区，提前跑会 Cannot access 'Cdp' before initialization
 async function main() {
+  const narration = await loadNarration(args.narration);
+  if (narration) {
+    console.log(`解说 ${narration.segments.length} 段 / ${narration.totalSec.toFixed(1)}s`
+      + `（${narration.model} · ${narration.voice}）`);
+  }
+
   const server = await startServer(REPO_ROOT);
   const siteUrl = `http://127.0.0.1:${server.port}/`;
   console.log(`静态服务 ${siteUrl}`);
@@ -92,7 +102,7 @@ async function main() {
     for (const key of orientationKeys) {
       const cfg = ORIENTATIONS[key];
       console.log(`\n=== ${cfg.label} ===`);
-      await runOrientation(cfg, siteUrl);
+      await runOrientation(cfg, siteUrl, narration);
     }
   } finally {
     server.server.close();
@@ -107,12 +117,14 @@ main().catch((error) => {
 
 /* -------------------------------------------------------------------------- */
 
-async function runOrientation(cfg, siteUrl) {
+async function runOrientation(cfg, siteUrl, narration) {
   const framesDir = path.join(workDir, `frames-${cfg.key}`);
   const cardPath = path.join(workDir, `endcard-${cfg.key}.png`);
+  // 解说版另存一份：无声/配乐版是 100 秒的社媒短版，别被两分半的解说版覆盖
+  const suffix = narration ? '-narrated' : '';
   const outPath = path.join(outDir, cfg.key === 'portrait'
-    ? 'yizhi-yantai-vertical-1080x1920.mp4'
-    : 'yizhi-yantai-1080p.mp4');
+    ? `yizhi-yantai-vertical-1080x1920${suffix}.mp4`
+    : `yizhi-yantai-1080p${suffix}.mp4`);
 
   await fsp.mkdir(workDir, { recursive: true });
   await fsp.mkdir(outDir, { recursive: true });
@@ -121,10 +133,10 @@ async function runOrientation(cfg, siteUrl) {
   let cdp;
   try {
     cdp = await connect(chrome.port);
-    const shots = await capture(cdp, cfg, siteUrl, framesDir);
-    await renderEndcard(cdp, cfg, cardPath);
+    const shots = await capture(cdp, cfg, siteUrl, framesDir, narration);
+    await renderEndcard(cdp, cfg, cardPath, narration);
 
-    const total = await encode(cfg, framesDir, cardPath, outPath, shots.duration, args.music);
+    const total = await encode(cfg, framesDir, cardPath, outPath, shots, args.music, narration);
     console.log(`成片 ${path.relative(REPO_ROOT, outPath)}  ${total.toFixed(2)}s`);
 
     if (!args['keep-frames']) await fsp.rm(framesDir, { recursive: true, force: true });
@@ -135,9 +147,49 @@ async function runOrientation(cfg, siteUrl) {
   }
 }
 
+/* ------------------------------ 解说清单 -------------------------------- */
+
+async function loadNarration(flag) {
+  if (!flag) return null;
+  const file = path.resolve(flag === true ? NARRATION_MANIFEST : flag);
+  let manifest;
+  try {
+    manifest = JSON.parse(await fsp.readFile(file, 'utf8'));
+  } catch (error) {
+    throw new Error(`读不了解说清单 ${path.relative(REPO_ROOT, file)}（${error.message}）。\n`
+      + '先跑 node tools/video/narrate.mjs 生成它。');
+  }
+  if (!Array.isArray(manifest.segments) || manifest.segments.length === 0) {
+    throw new Error(`解说清单里没有 segments：${file}`);
+  }
+  for (const segment of manifest.segments) {
+    if (!Number.isFinite(segment.durationSec)) {
+      throw new Error(`段落 ${segment.id} 缺 durationSec，重跑 tools/video/narrate.mjs`);
+    }
+    segment.path = path.isAbsolute(segment.file) ? segment.file : path.join(REPO_ROOT, segment.file);
+  }
+  return manifest;
+}
+
+/** 页面章节的停留时间由解说长度决定，而不是由页面字数决定。 */
+function planNarration(narration) {
+  if (!narration) return null;
+  const holdById = {};
+  let introSec = 0;
+  for (const segment of narration.segments) {
+    if (segment.id === 'intro') { introSec = segment.durationSec; continue; }
+    holdById[segment.id] = Math.round(segment.durationSec * 1000);
+  }
+  return {
+    introMs: Math.max(3600, Math.round(introSec * 1000) + 500),
+    holdById,
+  };
+}
+
 /* ------------------------------ 抓帧 -------------------------------------- */
 
-async function capture(cdp, cfg, url, framesDir) {
+async function capture(cdp, cfg, url, framesDir, narration) {
+  const narrationPlan = planNarration(narration);
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
   await cdp.send('Emulation.setDeviceMetricsOverride', cfg.metrics);
@@ -182,11 +234,15 @@ async function capture(cdp, cfg, url, framesDir) {
     everyNthFrame: 1,
   });
 
-  const { result } = await cdp.send('Runtime.evaluate', {
-    expression: choreography(cfg),
+  const evaluation = await cdp.send('Runtime.evaluate', {
+    expression: choreography(cfg, narrationPlan),
     awaitPromise: true,
     returnByValue: true,
   });
+  if (evaluation.exceptionDetails) {
+    const detail = evaluation.exceptionDetails.exception?.description || evaluation.exceptionDetails.text;
+    throw new Error(`页面里的拍摄脚本出错：${detail}`);
+  }
 
   await cdp.send('Page.stopScreencast');
   await writes;
@@ -194,9 +250,13 @@ async function capture(cdp, cfg, url, framesDir) {
   if (frameIndex < 10) throw new Error('只抓到不到 10 帧，Chrome 的 screencast 没有正常工作');
 
   const duration = last - first;
+  const timeline = evaluation.result.value;
+  if (!timeline || !Array.isArray(timeline.arrivals)) {
+    throw new Error('拍摄脚本没有回报章节落位时间，无法对齐解说音轨');
+  }
   await fsp.writeFile(path.join(framesDir, 'timestamps.json'), JSON.stringify(timestamps));
-  console.log(`抓帧 ${frameIndex} 帧 / ${duration.toFixed(1)}s（计划 ${(result.value / 1000).toFixed(1)}s）`);
-  return { frames: frameIndex, duration };
+  console.log(`抓帧 ${frameIndex} 帧 / ${duration.toFixed(1)}s（计划 ${(timeline.plannedMs / 1000).toFixed(1)}s）`);
+  return { frames: frameIndex, duration, arrivals: timeline.arrivals };
 }
 
 const WARMUP = `(async () => {
@@ -226,7 +286,9 @@ const WARMUP = `(async () => {
   await new Promise((resolve) => setTimeout(resolve, 700));
 })()`;
 
-function choreography(cfg) {
+function choreography(cfg, narrationPlan) {
+  const narrationHolds = narrationPlan ? narrationPlan.holdById : {};
+  const introMs = narrationPlan ? narrationPlan.introMs : 3600;
   return String.raw`
   (async () => {
     // CSS 的 scroll-behavior:smooth 会和逐帧滚动打架，先按住
@@ -234,6 +296,7 @@ function choreography(cfg) {
     style.textContent = 'html{scroll-behavior:auto !important}';
     document.head.appendChild(style);
 
+    const narrationHolds = ${JSON.stringify(narrationHolds)};
     const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
     const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -254,46 +317,50 @@ function choreography(cfg) {
     }
 
     const chapters = Array.from(document.querySelectorAll('.ch'));
+    const unknownIds = Object.keys(narrationHolds).filter((id) => !document.getElementById(id));
+    if (unknownIds.length) {
+      throw new Error('解说清单里的段落对不上页面章节：' + unknownIds.join(', '));
+    }
     const plan = chapters.map((chapter) => {
       const top = chapter.getBoundingClientRect().top + window.scrollY;
       const chars = (chapter.innerText || '').replace(/\s/g, '').length;
-      return {
-        target: top - window.innerHeight * ${cfg.lead},
-        hold: clamp(${cfg.hold.base} + chars * ${cfg.hold.perChar},
-                    ${cfg.hold.min}, ${cfg.hold.max}),
-      };
+      const readingHold = clamp(${cfg.hold.base} + chars * ${cfg.hold.perChar},
+                                 ${cfg.hold.min}, ${cfg.hold.max});
+      // 有解说时，画面至少陪解说站完；没解说的章节仍然按阅读速度走
+      const narrationHold = narrationHolds[chapter.id]
+        ? narrationHolds[chapter.id] + ${NARRATION_TAIL_MS}
+        : 0;
+      return { id: chapter.id, target: top - window.innerHeight * ${cfg.lead},
+               hold: Math.max(readingHold, narrationHold) };
     });
 
+    const startedAt = performance.now();
     window.scrollTo(0, 0);
-    await wait(3600);
+    await wait(${introMs});
 
+    const arrivals = [];
     for (const item of plan) {
       await animateScrollTo(item.target, ${cfg.transitionMs});
-      // 停留时缓慢漂移：画面不死，观众也能顺着读完
+      // 记下画面真正落位的时刻，音轨按这个时间排，不按算术平均值
+      arrivals.push({ id: item.id, at: performance.now() - startedAt });
+      // 停留时缓慢漂移：画面不死，观众也能顺着读完。
+      // 正文精简后，最后一章的 punch 本来就在画面里，不用再下摇去追它。
       await animateScrollTo(window.scrollY + ${cfg.driftPx}, item.hold);
     }
 
-    ${cfg.finale ? `
-    // 竖版收尾：把最后一句推进画面。页脚的二维码占位框不能出镜，先藏掉。
-    const footer = document.querySelector('.site-footer');
-    if (footer) footer.style.visibility = 'hidden';
-    const punch = document.querySelector('#ch11 .punch');
-    if (punch) {
-      await animateScrollTo(punch.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.52, 1400);
-      await animateScrollTo(window.scrollY + 20, 2600);
-    }
-    ` : ''}
-
     await wait(300);
-    return 3600 + plan.reduce((sum, item) => sum + item.hold + ${cfg.transitionMs}, 0)
-           ${cfg.finale ? '+ 4300' : ''};
+    return { plannedMs: performance.now() - startedAt, arrivals };
   })()`;
 }
 
 /* ------------------------------ 片尾卡 ------------------------------------ */
 
-async function renderEndcard(cdp, cfg, cardPath) {
+async function renderEndcard(cdp, cfg, cardPath, narration) {
   const c = cfg.card;
+  const credits = [];
+  if (args.music) credits.push('《月光》Debussy｜录音 Laurens Goedhart｜Public Domain');
+  if (narration) credits.push('配音 MiniMax 语音合成');
+  const creditHtml = credits.join('<br>');
   await cdp.send('Runtime.evaluate', {
     expression: `(() => {
       document.querySelectorAll('#endcard').forEach((el) => el.remove());
@@ -314,7 +381,7 @@ async function renderEndcard(cdp, cfg, cardPath) {
         '</div>' +
         '<div style="position:absolute;right:${c.padX}px;bottom:${c.padY}px;' +
           'font-size:${c.credit}px;letter-spacing:.03em;color:#9c9184;text-align:right">' +
-          '《月光》Debussy｜录音 Laurens Goedhart｜Public Domain</div>';
+          ${JSON.stringify(creditHtml)} + '</div>';
       document.body.appendChild(card);
     })()`,
   });
@@ -325,7 +392,7 @@ async function renderEndcard(cdp, cfg, cardPath) {
 
 /* ------------------------------ 编码 -------------------------------------- */
 
-async function encode(cfg, framesDir, cardPath, outPath, captureDuration, musicFile) {
+async function encode(cfg, framesDir, cardPath, outPath, shots, musicFile, narration) {
   const timestamps = JSON.parse(await fsp.readFile(path.join(framesDir, 'timestamps.json'), 'utf8'));
   const concatPath = path.join(framesDir, 'concat.txt');
   const filterPath = path.join(framesDir, 'filter.txt');
@@ -350,9 +417,12 @@ async function encode(cfg, framesDir, cardPath, outPath, captureDuration, musicF
     `[main][card]xfade=transition=fade:duration=${fade}:offset=${offset.toFixed(3)},format=yuv420p[v]`);
 
   const total = mainDuration + 4.7;
-  const audio = musicFile
-    ? await prepareAudio(musicFile, args['music-start'], total)
-    : null;
+  const audio = await prepareSoundtrack({
+    musicFile,
+    narration,
+    arrivals: shots.arrivals,
+    total,
+  });
 
   const ffArgs = [
     '-y', '-v', 'warning',
@@ -376,8 +446,16 @@ async function encode(cfg, framesDir, cardPath, outPath, captureDuration, musicF
   await run('ffmpeg', ffArgs);
   if (audio) await fsp.rm(audio, { force: true }).catch(() => {});
 
+  if (narration) {
+    const srtPath = outPath.replace(/\.mp4$/, '.srt');
+    await writeNarrationSrt(narration, shots.arrivals, srtPath);
+    console.log(`解说字幕 ${path.relative(REPO_ROOT, srtPath)}`);
+  }
+
   // 720p 轻量版：只重编视频，音轨直接复制
-  const small = outPath.replace(/-(1080x1920|1080p)\.mp4$/, cfg.key === 'portrait' ? '-720x1280.mp4' : '-720p.mp4');
+  const small = path.join(outDir, cfg.key === 'portrait'
+    ? `yizhi-yantai-vertical-720x1280${narration ? '-narrated' : ''}.mp4`
+    : `yizhi-yantai-720p${narration ? '-narrated' : ''}.mp4`);
   if (small !== outPath) {
     await run('ffmpeg', [
       '-y', '-v', 'warning', '-i', outPath,
@@ -393,12 +471,14 @@ async function encode(cfg, framesDir, cardPath, outPath, captureDuration, musicF
 }
 
 /**
- * 配乐处理：截取 → 淡入淡出 → 归一到 -20 LUFS / -2 dBTP。
+ * 配乐处理：截取 → 淡入淡出 → 归一到目标响度。
  * loudnorm 单遍经常差 1–2 dB，所以量一遍再补一次增益，别交给运气。
+ *
+ * 有解说时配乐退到 -27 LUFS，给 -16 LUFS 的人声让路；没有解说时仍是 -20 LUFS。
  */
-async function prepareAudio(file, startSeconds, total) {
-  const tmp = path.join(workDir, 'audio-trim.wav');
-  const out = path.join(workDir, 'audio-master.wav');
+async function prepareAudio(file, startSeconds, total, targetLufs = -20, name = 'audio') {
+  const tmp = path.join(workDir, `${name}-trim.wav`);
+  const out = path.join(workDir, `${name}-master.wav`);
   const start = Number(startSeconds || 0);
   const fadeOutStart = Math.max(0, total - 4);
 
@@ -409,7 +489,7 @@ async function prepareAudio(file, startSeconds, total) {
   ]);
 
   const measured = await measureLoudness(tmp);
-  const gain = (-20 - measured.i).toFixed(2);
+  const gain = (targetLufs - measured.i).toFixed(2);
 
   await run('ffmpeg', [
     '-y', '-v', 'error', '-i', tmp,
@@ -419,6 +499,92 @@ async function prepareAudio(file, startSeconds, total) {
 
   await fsp.rm(tmp, { force: true }).catch(() => {});
   return out;
+}
+
+/** 解说、配乐各自归好响度再混：混完再归一，人声会被配乐推着忽大忽小。 */
+async function prepareSoundtrack({ musicFile, narration, arrivals, total }) {
+  const music = musicFile
+    ? await prepareAudio(musicFile, args['music-start'], total, narration ? -27 : -20, 'music')
+    : null;
+  const voice = narration ? await prepareVoice(narration, arrivals, total) : null;
+
+  if (music && voice) return mixTracks(voice, music, total);
+  return music || voice;
+}
+
+/**
+ * 把逐段 mp3 摆到画面上：intro 从片头开始，其余按章节落位时刻加一点提前量。
+ * amix 的 normalize=0 很关键——默认会把每条轨道除以输入数，人声会凭空小 6 dB。
+ */
+async function prepareVoice(narration, arrivals, total) {
+  const arrivalById = new Map((arrivals || []).map((item) => [item.id, item.at]));
+  const raw = path.join(workDir, 'voice-raw.wav');
+  const out = path.join(workDir, 'voice-master.wav');
+  const inputs = [];
+  const graph = [];
+
+  narration.segments.forEach((segment, index) => {
+    const base = segment.id === 'intro' ? 0 : (arrivalById.get(segment.id) ?? 0);
+    const startMs = Math.max(0, Math.round(base + NARRATION_LEAD_MS));
+    inputs.push('-i', segment.path);
+    graph.push(`[${index}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,`
+      + `adelay=${startMs}|${startMs}[seg${index}]`);
+  });
+
+  const labels = narration.segments.map((_, index) => `[seg${index}]`).join('');
+  graph.push(`${labels}amix=inputs=${narration.segments.length}:normalize=0:duration=longest,`
+    + `apad=whole_dur=${total.toFixed(3)},atrim=0:${total.toFixed(3)},asetpts=N/SR/TB[voice]`);
+
+  await run('ffmpeg', [
+    '-y', '-v', 'error', ...inputs,
+    '-filter_complex', graph.join(';'),
+    '-map', '[voice]', '-ar', '48000', '-ac', '2', raw,
+  ]);
+
+  const measured = await measureLoudness(raw);
+  if (!Number.isFinite(measured.i)) throw new Error('解说轨是静音，检查 manifest 里的文件');
+  const gain = (-16 - measured.i).toFixed(2);
+
+  await run('ffmpeg', [
+    '-y', '-v', 'error', '-i', raw,
+    '-af', `volume=${gain}dB,alimiter=limit=0.841:level=0:attack=5:release=80`,
+    '-t', total.toFixed(3), '-ar', '48000', '-ac', '2', out,
+  ]);
+
+  await fsp.rm(raw, { force: true }).catch(() => {});
+  return out;
+}
+
+async function mixTracks(voice, music, total) {
+  const out = path.join(workDir, 'mix-master.wav');
+  await run('ffmpeg', [
+    '-y', '-v', 'error', '-i', voice, '-i', music,
+    '-filter_complex',
+    '[0:a][1:a]amix=inputs=2:normalize=0:duration=longest,'
+      + 'alimiter=limit=0.841:level=0:attack=5:release=80[a]',
+    '-map', '[a]', '-t', total.toFixed(3), '-ar', '48000', '-ac', '2', out,
+  ]);
+  return out;
+}
+
+/* ------------------------------ 字幕 -------------------------------------- */
+
+function writeNarrationSrt(narration, arrivals, outPath) {
+  const arrivalById = new Map((arrivals || []).map((item) => [item.id, item.at]));
+  const cues = narration.segments.map((segment, index) => {
+    const base = segment.id === 'intro' ? 0 : (arrivalById.get(segment.id) ?? 0);
+    const start = (base + NARRATION_LEAD_MS) / 1000;
+    const end = start + segment.durationSec;
+    return `${index + 1}\n${srtTime(start)} --> ${srtTime(end)}\n${segment.text}\n`;
+  });
+  return fsp.writeFile(outPath, cues.join('\n'));
+}
+
+function srtTime(seconds) {
+  const ms = Math.max(0, Math.round(seconds * 1000));
+  const pad = (value, size = 2) => String(value).padStart(size, '0');
+  return `${pad(Math.floor(ms / 3_600_000))}:${pad(Math.floor((ms % 3_600_000) / 60_000))}`
+    + `:${pad(Math.floor((ms % 60_000) / 1000))},${pad(ms % 1000, 3)}`;
 }
 
 async function measureLoudness(file) {

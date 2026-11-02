@@ -343,14 +343,25 @@ html.js .ch > *.is-visible {
 
 .footer-inner { max-width: 62rem; }
 
-.site-footer h3 {
-  margin: 0 0 1.4rem;
+/* 制作信息默认收起：正文已经够短，页脚就别再铺一屏字 */
+.footer-more summary {
+  cursor: pointer;
   font-family: var(--kai);
-  font-weight: 400;
-  font-size: 1.6rem;
+  font-size: 1.15rem;
   letter-spacing: .18em;
   color: var(--red-deep);
+  list-style: none;
 }
+.footer-more summary::-webkit-details-marker { display: none; }
+.footer-more summary::after {
+  content: "＋";
+  margin-left: .7em;
+  font-size: .78em;
+  color: var(--ink-faint);
+}
+.footer-more[open] summary::after { content: "－"; }
+.footer-more[open] summary { margin-bottom: 1.2rem; }
+.footer-more > p { max-width: 52rem; }
 
 .site-footer p { color: var(--ink-soft); font-size: .92rem; }
 

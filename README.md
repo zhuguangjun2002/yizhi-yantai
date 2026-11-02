@@ -15,6 +15,7 @@
 
 - 十一张关键帧就是十一幅剪纸作品，用 AI 生成，边框是画里自带的回纹。
 - 最后一章反转：前面看见的码头、独轮车、果园、海，都是一位老艺人剪出来的。非遗从"第五条素材"变成"整部片子的答案"。
+- 正文只留朗读稿的 460 字，每章 2–3 句；制作信息收进页脚的 `<details>`，默认不展开。
 - 全站零外部依赖、零构建步骤，一个文件夹扔到任何地方都能打开。
 
 ---
@@ -107,10 +108,10 @@ npx wrangler pages deploy dist --project-name=fruit --branch=main
 
 | 文件（`video/` 下） | 画面 | 时长 | 体积 |
 |---|---|---|---|
-| `yizhi-yantai-vertical-1080x1920.mp4` | 1080×1920 | 100.3 s | 30 MB |
-| `yizhi-yantai-vertical-720x1280.mp4` | 720×1280 | 100.3 s | 14 MB |
-| `yizhi-yantai-1080p.mp4` | 1920×1080 | 90.5 s | 13 MB |
-| `yizhi-yantai-720p.mp4` | 1280×720 | 90.5 s | 6.4 MB |
+| `yizhi-yantai-vertical-1080x1920.mp4` | 1080×1920 | 75.5 s | 20 MB |
+| `yizhi-yantai-vertical-720x1280.mp4` | 720×1280 | 75.5 s | 9.0 MB |
+| `yizhi-yantai-1080p.mp4` | 1920×1080 | 66.5 s | 7.4 MB |
+| `yizhi-yantai-720p.mp4` | 1280×720 | 66.5 s | 4.2 MB |
 
 - 编码：H.264 High / 30 fps / CRF 22–23 / `+faststart`，音频 AAC 192k。
 - 配乐：**《月光》（Clair de lune）**，Debussy 作曲（公有领域）；录音由 Laurens Goedhart 演奏，
@@ -120,12 +121,48 @@ npx wrangler pages deploy dist --project-name=fruit --branch=main
 - 来源与授权细节见 `video/CREDITS.md`。
 - `*-silent.mp4` 是无声版，留着给二次剪辑或换曲。
 
+### 解说版（MiniMax 语音合成）
+
+另有一条约两分钟的解说版，文件名带 `-narrated`，**不覆盖**上面的短版：
+
+| 文件（`video/` 下） | 画面 | 时长 | 体积 |
+|---|---|---|---|
+| `yizhi-yantai-vertical-1080x1920-narrated.mp4` | 1080×1920 | 118.2 s | 30 MB |
+| `yizhi-yantai-vertical-720x1280-narrated.mp4` | 720×1280 | 118.2 s | 14 MB |
+| `yizhi-yantai-1080p-narrated.mp4` | 1920×1080 | 115.3 s | 9.7 MB |
+| `yizhi-yantai-720p-narrated.mp4` | 1280×720 | 115.3 s | 6.2 MB |
+| `*-narrated.srt` | — | — | 逐段字幕，给需要 CC 的平台 |
+
+- 台词 460 字，MiniMax `speech-2.6-hd`，女声 `female-shaonv`，全片解说 91.3 s。
+- 年份按中文习惯逐位读（`1949 年` → `一九四九年`），页面仍显示阿拉伯数字；
+  转写只发生在送 TTS 的文本上，`--check` 比的仍是页面原文。
+- **画面跟着声音走**：先合成、再量每段时长，章节停留取「阅读时间」和「解说时长 + 0.7 s」的较大值。
+  音轨按浏览器回报的真实落位时刻排，不按算术平均值——不然跑到第八章就差了半秒。
+- 人声归一到 **-16 LUFS**；配乐退到 **-27 LUFS**，混完限幅 -1.5 dBFS（AAC 编码后实测约 -2.7 dBTP）。
+- 正文精简后，最后一章的 punch 本来就在画面里；竖版不再额外下摇，免得把剪纸边框切掉。
+- 片尾卡署名 `配音 MiniMax 语音合成`；模型、音色、文本来源记在 `video/CREDITS.md`。
+- 配乐沿用原片的《月光》录音（Wikimedia Commons，公有领域），从 0:20 起截取。
+
+```bash
+export MINIMAX_API_KEY=...
+node tools/video/narrate.mjs                                  # 改过的段落才重新合成
+node tools/video/make-video.mjs --narration --music <音频> --music-start 20
+```
+
+台词在 `tools/video/narration.txt`，`[id]` 对应页面章节 id，`[intro]` 是片头。
+网页正文与朗读稿是同一份字，`node tools/video/narrate.mjs --check` 会逐章比对；不一致就别合成，省得片子里「看到的」和「听到的」打架。
+换音色用 `node tools/video/narrate.mjs --voice female-chengshu --speed 1.05`；
+系统女声还有 `female-yujie`（御姐）、`female-tianmei`（甜美）。
+
+> 网页本身不自动播解说。浏览器会拦自动播放，滚动叙事里突然出声也不礼貌。
+> 声音只进成片；真要做网页版，得给一个显式的「听解说」按钮，别默认开。
+
 竖版不是把横版裁成 9:16——它走的是站点自己的移动端版式（图在上、文在下，回纹边框完整），
 用 540×960 CSS @2x 渲染成 1080×1920。
 
 **怎么做出来的**（别用录屏软件）：Chrome headless 通过 CDP `Page.startScreencast` 逐帧抓图，
-滚动由页面内的缓动脚本驱动，停留时长按章节字数分配；竖版在收尾处额外下摇，
-把「一纸烟台，剪了一百五十年」推进画面，并在片尾卡淡入前藏掉页脚（那里有二维码占位框）。
+滚动由页面内的缓动脚本驱动，停留时长按章节字数（有解说时按解说长度）分配；
+竖版结尾只做缓慢漂移——正文精简后，最后一句本来就在画面里，不用再下摇去追。
 帧序列按时间戳转成 30 fps 恒定帧率，再与片尾卡交叉淡入、混入音轨。
 
 > 抓帧脚本在 `tools/video/`，一条命令重出片：
@@ -135,7 +172,7 @@ npx wrangler pages deploy dist --project-name=fruit --branch=main
 > ```
 >
 > 依赖、调参、为什么不能用录屏，见 `tools/video/README.md`。
-> 换配乐不用重编画面：脚本会自己截取、淡入淡出、归一到 -20 LUFS。
+> 换配乐不用重编画面：脚本会自己截取、淡入淡出、归一到 -20 LUFS（有解说时 -27 LUFS）。
 
 ---
 
@@ -152,7 +189,9 @@ assets/img/qr-site.svg  页脚二维码（指向线上地址）
 concept/dashscope-final 十一张原图（1536×1024 PNG，母版）
 tools/gen-keyframes.py  重新生成关键帧的脚本
 tools/build-site.sh     发布前打包，只挑该上线的文件
-tools/video/            从页面拍成片的流水线（抓帧 + 编码 + 配乐）
+tools/video/            从页面拍成片的流水线（抓帧 + 编码 + 配乐 + 解说）
+tools/video/narration.txt 解说词（[id] 对应页面章节）
+tools/video/narrate.mjs 解说词 → MiniMax 语音合成（分段缓存）
 docs/                   美术设定（风格圣经）
 video/                  成片（本地，不进仓库）；CREDITS.md 授权说明入库
 wrangler.toml           Cloudflare Pages 项目配置
@@ -171,6 +210,7 @@ wrangler.toml           Cloudflare Pages 项目配置
 | 文字 | 段落进视口时浮起 | IntersectionObserver |
 
 **加一章要改三处**：`index.html` 加 `<section class="ch" data-chapter="6">` 和 `<div class="scene" id="scene-6">`、导航加一项、准备一张 1600×1073 的图。
+有解说版时再加一段 `[id]` 台词；`node tools/video/narrate.mjs --check` 会告诉你哪一章还没对上。
 
 ---
 
@@ -210,7 +250,9 @@ python3 tools/gen-keyframes.py
 
 ## 史料核对
 
-页面里每条年代都查过公开资料，主要来源：张裕官网「百年历程」、烟台市档案馆、烟台市情资料库、
+网页正文现在就是朗读稿，每章 1–3 句；下面这些核对记录包含已从正文压掉的细节，留作史料底稿。
+
+主要来源：张裕官网「百年历程」、烟台市档案馆、烟台市情资料库、
 张裕酒文化博物馆、三环官网、万华官网、央视网与澎湃关于西港区 40 万吨码头的报道。
 
 查证过程中改掉的三处错误，留个记录：
@@ -254,6 +296,8 @@ python3 tools/gen-keyframes.py
 - [ ] 补 3–5 个实拍空镜（老艺人的手、剪刀、红纸屑、真苹果、海面），与 AI 图交替
 - [x] 剪一版竖屏成片（1080×1920，移动端版式，见「成片」）
 - [x] 抓帧流程收进 `tools/video/`，一条命令重出片
+- [x] 加一版女声解说（MiniMax 语音合成，解说时长驱动画面节奏，见「解说版」）
+- [x] 解说版接回《月光》，配乐垫到 -27 LUFS，人声保持 -16 LUFS
 - [x] 页脚二维码换成线上地址（`assets/img/qr-site.svg`，扫码直达 fruit.bigcow.net）
 - [ ] 加一份「提示词 → 生成图 → 成片」的对照页，评审时最好用
 - [ ] 若甲方要求音乐完全自有，把《月光》换成本地录制的原创或已购授权（换曲只需重混音轨，画面不用重编）
