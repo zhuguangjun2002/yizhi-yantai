@@ -6,7 +6,8 @@
   X-Frame-Options: SAMEORIGIN
   Permissions-Policy: geolocation=(), microphone=(), camera=()
 
-# 图片文件名没有内容指纹，README 里还写着「覆盖同名文件即可换图」。
+# 图片/CSS/JS 的文件名都没有内容指纹。改样式或脚本时，记得同步 bump
+# index.html 里的 ?v= 版本号；否则边缘缓存会让老访客继续看旧文件。
 # 所以这里不能写 immutable——否则换了剪纸，老访客一年都看不到新画。
 /assets/img/*
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
